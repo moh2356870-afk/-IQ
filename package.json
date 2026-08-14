@@ -1,0 +1,12 @@
+{
+  "name": "matjar-iq",
+  "version": "1.0.0",
+  "description": "AI assistant for Salla stores",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
