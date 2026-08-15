@@ -1,5 +1,4 @@
 const express = require("express");
-const OpenAI = require("openai");
 const crypto = require("crypto");
 
 const app = express();
