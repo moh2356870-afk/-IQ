@@ -1,11 +1,19 @@
 const express = require("express");
+const crypto = require("crypto");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json({ limit: "2mb" }));
+// نخلي Express يحتفظ بالطلب الخام حتى نتحقق من توقيع سلة
+app.use(
+  express.json({
+    limit: "2mb",
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    }
+  })
+);
 
-// تخزين مؤقت أثناء تشغيل السيرفر
 const stores = {};
 
 function hideSecret(value) {
@@ -20,7 +28,29 @@ function hideSecret(value) {
   return text.slice(0, 4) + "..." + text.slice(-4);
 }
 
-// الصفحة الرئيسية
+function verifySallaSignature(req) {
+  const secret = process.env.SALLA_WEBHOOK_SECRET;
+  const signature = req.get("X-Salla-Signature");
+
+  if (!secret || !signature || !req.rawBody) {
+    return false;
+  }
+
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(req.rawBody)
+    .digest("hex");
+
+  const a = Buffer.from(signature);
+  const b = Buffer.from(expected);
+
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(a, b);
+}
+
 app.get("/", (req, res) => {
   res.json({
     app: "Matjar IQ",
@@ -28,7 +58,6 @@ app.get("/", (req, res) => {
   });
 });
 
-// فحص حالة السيرفر
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
@@ -36,17 +65,24 @@ app.get("/health", (req, res) => {
   });
 });
 
-// استقبال تنبيهات سلة
 app.post("/notifications", (req, res) => {
+  const strategy = req.get("X-Salla-Security-Strategy");
+
+  if (strategy === "Signature" && !verifySallaSignature(req)) {
+    console.log("❌ Invalid Salla webhook signature");
+    return res.status(401).json({
+      success: false,
+      message: "Invalid signature"
+    });
+  }
+
   const body = req.body || {};
+  const data = body.data || body;
 
   console.log("=================================");
   console.log("SALLA WEBHOOK RECEIVED");
-  console.log("Event:", body.event || body.event_name || "unknown");
-  console.log("Data:", JSON.stringify(body, null, 2));
+  console.log("Event:", body.event || "unknown");
   console.log("=================================");
-
-  const data = body.data || body;
 
   const storeId =
     data.store_id ||
@@ -81,15 +117,6 @@ app.post("/notifications", (req, res) => {
   });
 });
 
-// رابط إعادة التوجيه
-app.get("/callback", (req, res) => {
-  res.json({
-    success: true,
-    message: "Matjar IQ callback received"
-  });
-});
-
-// تشغيل السيرفر
 app.listen(PORT, () => {
   console.log(`Matjar IQ is running on port ${PORT}`);
 });
